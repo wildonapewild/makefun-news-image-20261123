@@ -1,66 +1,75 @@
 #!/usr/bin/env python3
-"""THE COMPLETE DAY - entry program for news-image-20261123 (final4).
+"""THE COMPLETE DAY -- delivery program, news-image-20261123, final4.
 
-The Complete Day is a one-page newspaper front page that sums up Monday
-23 November 2026 in 44 stories: a giant Playfair masthead, a six-figure
-numbers strip, twelve illustrated main cards led by the Trump-Schumer
-story, a dotted world map with numbered pins, a UTC timeline, an ALSO ON
-column of 32 further stories and a red DATE CHECK box of rejected items.
+THE COMPLETE DAY squeezes the whole of Monday 23 November 2026 onto a
+single broadsheet front page: masthead, numbers strip, twelve pictured
+lead cards headed by the Trump-Schumer clash, a pinned world map, a UTC
+timeline, thirty-two short briefs and the DATE CHECK rejection box.
 
-This program is stdlib-only and copy-only: it copies the entry.png that
-sits beside it into the output directory, after checking the PNG magic,
-the 1 MiB competition cap and the exact expected size of the artwork.
-It imports nothing beyond hashlib, os and sys, and never uses PIL.
+Delivery here is deliberately plain. The finished artwork already lives
+next to this file as entry.png; the program's only job is to confirm that
+the file on disk is exactly the artwork that was approved -- right length,
+right digest, genuine PNG header, safely under the one-megabyte ceiling
+-- and then to place an untouched copy in the output directory.
+
+Standard library only (hashlib, os, sys). No image library is imported
+and nothing is re-rendered: the copy is byte-for-byte.
 """
 
 import hashlib
 import os
 import sys
 
-EXPECTED_BYTES = 249320
-EXPECTED_SHA256 = "8ce1108aa706f63ca28702bcb143b46767e0ec64f4e4519365e0ae2402c3ffdf"
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-HARD_CAP = 1048576
+# The approved artwork, pinned so any drift fails loudly instead of
+# silently shipping the wrong front page.
+ARTWORK_BYTES = 249320
+ARTWORK_SHA256 = "8ce1108aa706f63ca28702bcb143b46767e0ec64f4e4519365e0ae2402c3ffdf"
+CEILING = 1024 * 1024
+PNG_MAGIC = bytes((0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
 
 
-def load_entry_bytes():
-    here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, "entry.png")
-    with open(path, "rb") as fh:
-        return fh.read()
+def read_artwork():
+    folder = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(folder, "entry.png"), "rb") as handle:
+        return handle.read()
 
 
-def check_artwork(data):
-    if not data:
-        sys.exit("entry.png is empty")
-    if data[:8] != PNG_SIGNATURE:
-        sys.exit("entry.png fails the PNG signature check")
-    if len(data) > HARD_CAP:
-        sys.exit("entry.png exceeds the 1 MiB cap: %d bytes" % len(data))
-    if len(data) != EXPECTED_BYTES:
+def verify(blob):
+    """Return the sha256 hex digest, or stop with a clear complaint."""
+    if len(blob) == 0:
+        sys.exit("THE COMPLETE DAY: entry.png is empty, nothing to deliver")
+    if not blob.startswith(PNG_MAGIC):
+        sys.exit("THE COMPLETE DAY: entry.png does not start with a PNG header")
+    if len(blob) > CEILING:
+        sys.exit("THE COMPLETE DAY: entry.png is over the 1 MiB ceiling")
+    if len(blob) != ARTWORK_BYTES:
         sys.exit(
-            "entry.png size drifted: got %d bytes, expected %d"
-            % (len(data), EXPECTED_BYTES)
+            "THE COMPLETE DAY: entry.png has %d bytes, expected %d"
+            % (len(blob), ARTWORK_BYTES)
         )
-
-
-def check_digest(data):
-    digest = hashlib.sha256(data).hexdigest()
-    if digest != EXPECTED_SHA256:
-        sys.exit("entry.png sha256 mismatch: %s" % digest)
+    digest = hashlib.sha256(blob).hexdigest()
+    if digest != ARTWORK_SHA256:
+        sys.exit("THE COMPLETE DAY: entry.png digest mismatch (%s)" % digest)
     return digest
 
 
+def deliver(blob):
+    destination_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+    os.makedirs(destination_dir, exist_ok=True)
+    destination = os.path.join(destination_dir, "entry.png")
+    with open(destination, "wb") as handle:
+        handle.write(blob)
+    return destination
+
+
 def main():
-    data = load_entry_bytes()
-    check_artwork(data)
-    digest = check_digest(data)
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
-    os.makedirs(out_dir, exist_ok=True)
-    target = os.path.join(out_dir, "entry.png")
-    with open(target, "wb") as fh:
-        fh.write(data)
-    sys.stderr.write("wrote %s: %d bytes sha256=%s\n" % (target, len(data), digest))
+    blob = read_artwork()
+    digest = verify(blob)
+    destination = deliver(blob)
+    sys.stderr.write(
+        "THE COMPLETE DAY delivered to %s (%d bytes, sha256 %s)\n"
+        % (destination, len(blob), digest)
+    )
 
 
 if __name__ == "__main__":
